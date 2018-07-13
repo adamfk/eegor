@@ -1,31 +1,5 @@
 /*
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org/>
-
-Originally from http://blog.olkie.com/2013/11/05/online-c-function-prototype-header-generator-tool/
-
+  Originally from http://blog.olkie.com/2013/11/05/online-c-function-prototype-header-generator-tool/
 */
 
 const cKeywords = ["auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float", "for", "goto", "if", "int", "long", "register", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while"];
@@ -35,10 +9,12 @@ const invalidReturnTypes = ["auto", "break", "case", "continue", "default", "do"
 
 //grab all comment blocks, and comment lines preceding function definition
 const reStringPart = /"(?:\\[\n|.]|[^\n\\])"/.source;
-const reCommentPart = /\/(?:[*][\s\S]*?(?:[*]\/|$)|\/.*(?=\n|$))/.source; //NOTE the look ahead! can't capture \n, because js doesn't support \Z and we need our big re pattern below to be able to match on \Z or $ if not using multiline mode
-const reStringOrCommentOrAny = "(?:" + reCommentPart + "|" + reStringPart + "|[\\s\\S])*?"; //tries to respect comments and strings
+const reStarComment = /\/[*](?:[*](?!\/)|[^*])*[*]\//.source;
+const reLineComment = /\/\/.*(?=\n|$)/.source; //NOTE the look ahead! can't capture \n, because js doesn't support \Z and we need our big re pattern below to be able to match on \Z or $ if not using multiline mode
+const reComment = `(?:${reStarComment}|${reLineComment})`
+const reStringOrCommentOrAny = "(?:" + reComment + "|" + reStringPart + "|[^])*?"; //tries to respect comments and strings
 //var reBeforePart = /([\s\S]*?)/.source; //does not respect comments or strings
-const reBeforePart = "(" + reStringOrCommentOrAny + '\\s*' + ")";
+const reBeforePart = "(" + reStringOrCommentOrAny + '\\s*?' + ")";
 
 
 
@@ -64,7 +40,7 @@ export function getFunctions(inputCode: string, shouldParseComments: boolean = t
   inputCode = inputCode.replace(/\r\n|\r/g, "\n");
 
   //can't use multiline mode because we need to match on end of input, not just line
-  var re = new RegExp(reBeforePart + /((?:(?:^|\n)\s*(\w+[\s*\t\w]+)\b\s*(\w+)\s*\(\s*([^)]*)\s*\)\s*([{;])))/.source, "g");  
+  var re = new RegExp(reBeforePart + /((?:(?:^|\n)\s*?(\w+[\s*?\t\w]+)\b\s*?(\w+)\s*?\(\s*?([^)]*)\s*?\)\s*?([{;])))/.source, "g");  
   
   //console.log(re);
   let groups : RegExpExecArray;
@@ -91,6 +67,8 @@ export function getFunctions(inputCode: string, shouldParseComments: boolean = t
       previousBefore = func.entireMatch;
     }
   }
+
+
 
   if (functions.length > 0) {
     let lastFunc = functions[functions.length-1];
@@ -127,7 +105,6 @@ function hasInvalidReturnType(foundFunction: FoundFunction) {
 }
 
 function extractLastComment(foundFunction: FoundFunction) {
-  let reStarComment = /\/[*](?:[*](?!\/)|[^*])*[*]\//.source;
   let reRepeatedLineComment = /(?:[ \t]*\/\/.*(?:\n|$))+/.source;
   let reTouchingComment = new RegExp(`^` + reBeforePart + `(${reStarComment}|${reRepeatedLineComment})[ \t]*$`);
 
