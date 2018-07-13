@@ -1,39 +1,68 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = require("fs");
+const globby = require("globby");
 const CFunctionParser_1 = require("./CFunctionParser");
-function syncFromToText(fromCode, toCode) {
-    let outputCode = "";
-    function processFunctions(code) {
-        let funcs = CFunctionParser_1.getFunctions(code);
-        let funcMap = new Map();
-        for (const func of funcs) {
-            funcMap.set(func.functionName, func);
-        }
-        return [funcs, funcMap];
+var SyncStrategy;
+(function (SyncStrategy) {
+    SyncStrategy[SyncStrategy["AUTO"] = 0] = "AUTO";
+    SyncStrategy[SyncStrategy["UPDATE"] = 1] = "UPDATE";
+    SyncStrategy[SyncStrategy["USE_AS_SOURCE"] = 2] = "USE_AS_SOURCE";
+})(SyncStrategy = exports.SyncStrategy || (exports.SyncStrategy = {}));
+class SyncInfo {
+    constructor() {
+        this.syncStrategy = SyncStrategy.AUTO;
     }
-    let [_, fromFuncMap] = processFunctions(fromCode);
-    let [toFuncs, toFuncMap] = processFunctions(toCode);
-    for (const func of toFuncs) {
-        let sourceFunc = fromFuncMap.get(func.functionName);
-        if (sourceFunc && hasDoxygenComment(sourceFunc)) {
-            outputCode += func.beforeLastComment + sourceFunc.touchingComment + func.functionMatch + func.after;
-        }
-        else {
-            outputCode += func.before + func.functionMatch + func.after;
+}
+exports.SyncInfo = SyncInfo;
+class CHeaderSync {
+    constructor() {
+        this.syncMap = new Map();
+    }
+    scanFiles(scanPatterns) {
+        let filesToScan = globby.sync(scanPatterns);
+        for (const filePath of filesToScan) {
+            let code = fs.readFileSync(filePath).toString();
+            let funcs = CFunctionParser_1.getFunctions(code);
+            for (const func of funcs) {
+                let syncInfo = new SyncInfo();
+                syncInfo.filePath = filePath;
+                syncInfo.foundFunction = func;
+                let list = this.syncMap.get(func.functionName) || [];
+                list.push(syncInfo);
+                this.syncMap.set(func.functionName, list);
+            }
         }
     }
-    outputCode.replace(/\n/g, "\r\n");
-    return outputCode;
+    updateFiles(updatePatterns) {
+        let filesToUpdate = globby.sync(updatePatterns);
+        for (const filePath of filesToUpdate) {
+            let outputCode = "";
+            let inputCode = fs.readFileSync(filePath).toString();
+            let toFuncs = CFunctionParser_1.getFunctions(inputCode);
+            for (const func of toFuncs) {
+                let sourceInfo = (this.syncMap.get(func.functionName) || [])[0];
+                if (sourceInfo && hasDoxygenComment(sourceInfo.foundFunction.touchingComment)) {
+                    outputCode += func.beforeLastComment
+                        + sourceInfo.foundFunction.touchingComment;
+                }
+                else {
+                    outputCode += func.before;
+                }
+                outputCode += func.functionMatch + func.after;
+            }
+            outputCode.replace(/\n/g, "\r\n");
+            if (outputCode != inputCode) {
+                fs.writeFileSync(filePath, outputCode);
+            }
+        }
+    }
 }
-exports.syncFromToText = syncFromToText;
-let fromCode = fs.readFileSync("test/file1.c").toString();
-let toCode = fs.readFileSync("test/file1.h").toString();
-let output = syncFromToText(fromCode, toCode);
-console.log(output);
-fs.writeFileSync("test/file1.h", output);
-console.log("done!");
-function hasDoxygenComment(sourceFunc) {
-    return sourceFunc.touchingComment.match(/^\/[*][*][^*]|^\/{3}[^\/]/);
+exports.CHeaderSync = CHeaderSync;
+function hasDoxygenComment(touchingComment) {
+    return touchingComment.match(/^\/[*][*][^*]|^\/{3}[^\/]/);
 }
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiQ0hlYWRlclN5bmMuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJDSGVhZGVyU3luYy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOztBQUNBLHlCQUEwQjtBQUMxQix1REFBZ0U7QUFFaEUsd0JBQStCLFFBQWUsRUFBRSxNQUFhO0lBRXpELElBQUksVUFBVSxHQUFHLEVBQUUsQ0FBQztJQUVwQiwwQkFBMEIsSUFBVztRQUNqQyxJQUFJLEtBQUssR0FBRyw4QkFBWSxDQUFDLElBQUksQ0FBQyxDQUFDO1FBQy9CLElBQUksT0FBTyxHQUFHLElBQUksR0FBRyxFQUF3QixDQUFDO1FBQzlDLEdBQUcsQ0FBQyxDQUFDLE1BQU0sSUFBSSxJQUFJLEtBQUssQ0FBQyxDQUFDLENBQUM7WUFDdkIsT0FBTyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsWUFBWSxFQUFFLElBQUksQ0FBQyxDQUFDO1FBQ3pDLENBQUM7UUFDRCxNQUFNLENBQUMsQ0FBQyxLQUFLLEVBQUUsT0FBTyxDQUFDLENBQUM7SUFDNUIsQ0FBQztJQUVELElBQUksQ0FBQyxDQUFDLEVBQUUsV0FBVyxDQUFDLEdBQUcsZ0JBQWdCLENBQUMsUUFBUSxDQUFDLENBQUM7SUFDbEQsSUFBSSxDQUFDLE9BQU8sRUFBRSxTQUFTLENBQUMsR0FBRyxnQkFBZ0IsQ0FBQyxNQUFNLENBQUMsQ0FBQztJQUVwRCxHQUFHLENBQUMsQ0FBQyxNQUFNLElBQUksSUFBSSxPQUFPLENBQUMsQ0FBQyxDQUFDO1FBQ3pCLElBQUksVUFBVSxHQUFHLFdBQVcsQ0FBQyxHQUFHLENBQUMsSUFBSSxDQUFDLFlBQVksQ0FBQyxDQUFDO1FBRXBELEVBQUUsQ0FBQyxDQUFDLFVBQVUsSUFBSSxpQkFBaUIsQ0FBQyxVQUFVLENBQUMsQ0FBQyxDQUNoRCxDQUFDO1lBQ0csVUFBVSxJQUFJLElBQUksQ0FBQyxpQkFBaUIsR0FBRyxVQUFVLENBQUMsZUFBZSxHQUFHLElBQUksQ0FBQyxhQUFhLEdBQUcsSUFBSSxDQUFDLEtBQUssQ0FBQztRQUN4RyxDQUFDO1FBQUMsSUFBSSxDQUFDLENBQUM7WUFDSixVQUFVLElBQUksSUFBSSxDQUFDLE1BQU0sR0FBRyxJQUFJLENBQUMsYUFBYSxHQUFHLElBQUksQ0FBQyxLQUFLLENBQUM7UUFDaEUsQ0FBQztJQUNMLENBQUM7SUFFRCxVQUFVLENBQUMsT0FBTyxDQUFDLEtBQUssRUFBRSxNQUFNLENBQUMsQ0FBQztJQUVsQyxNQUFNLENBQUMsVUFBVSxDQUFDO0FBQ3RCLENBQUM7QUE5QkQsd0NBOEJDO0FBRUQsSUFBSSxRQUFRLEdBQUcsRUFBRSxDQUFDLFlBQVksQ0FBQyxjQUFjLENBQUMsQ0FBQyxRQUFRLEVBQUUsQ0FBQztBQUMxRCxJQUFJLE1BQU0sR0FBRyxFQUFFLENBQUMsWUFBWSxDQUFDLGNBQWMsQ0FBQyxDQUFDLFFBQVEsRUFBRSxDQUFDO0FBS3hELElBQUksTUFBTSxHQUFHLGNBQWMsQ0FBQyxRQUFRLEVBQUUsTUFBTSxDQUFDLENBQUM7QUFFOUMsT0FBTyxDQUFDLEdBQUcsQ0FBQyxNQUFNLENBQUMsQ0FBQztBQUVwQixFQUFFLENBQUMsYUFBYSxDQUFDLGNBQWMsRUFBRSxNQUFNLENBQUMsQ0FBQztBQUV6QyxPQUFPLENBQUMsR0FBRyxDQUFDLE9BQU8sQ0FBQyxDQUFDO0FBRXJCLDJCQUEyQixVQUF5QjtJQUNoRCxNQUFNLENBQUMsVUFBVSxDQUFDLGVBQWUsQ0FBQyxLQUFLLENBQUMsMkJBQTJCLENBQUMsQ0FBQztBQUN6RSxDQUFDIn0=
+let syncr = new CHeaderSync();
+syncr.scanFiles("test/*.c");
+syncr.updateFiles("test/*.h");
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiQ0hlYWRlclN5bmMuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJDSGVhZGVyU3luYy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOztBQUNBLHlCQUEwQjtBQUMxQixpQ0FBaUM7QUFDakMsdURBQWdFO0FBRWhFLElBQVksWUFJWDtBQUpELFdBQVksWUFBWTtJQUNwQiwrQ0FBSSxDQUFBO0lBQ0osbURBQU0sQ0FBQTtJQUNOLGlFQUFhLENBQUE7QUFDakIsQ0FBQyxFQUpXLFlBQVksR0FBWixvQkFBWSxLQUFaLG9CQUFZLFFBSXZCO0FBRUQ7SUFBQTtRQUdJLGlCQUFZLEdBQUcsWUFBWSxDQUFDLElBQUksQ0FBQztJQUNyQyxDQUFDO0NBQUE7QUFKRCw0QkFJQztBQUVEO0lBQUE7UUFFSSxZQUFPLEdBQUcsSUFBSSxHQUFHLEVBQXNCLENBQUM7SUFvRDVDLENBQUM7SUFsRFUsU0FBUyxDQUFDLFlBQTRCO1FBRXpDLElBQUksV0FBVyxHQUFHLE1BQU0sQ0FBQyxJQUFJLENBQUMsWUFBWSxDQUFDLENBQUM7UUFFNUMsR0FBRyxDQUFDLENBQUMsTUFBTSxRQUFRLElBQUksV0FBVyxDQUFDLENBQUMsQ0FBQztZQUNqQyxJQUFJLElBQUksR0FBRyxFQUFFLENBQUMsWUFBWSxDQUFDLFFBQVEsQ0FBQyxDQUFDLFFBQVEsRUFBRSxDQUFDO1lBQ2hELElBQUksS0FBSyxHQUFHLDhCQUFZLENBQUMsSUFBSSxDQUFDLENBQUM7WUFDL0IsR0FBRyxDQUFDLENBQUMsTUFBTSxJQUFJLElBQUksS0FBSyxDQUFDLENBQUMsQ0FBQztnQkFDdkIsSUFBSSxRQUFRLEdBQUcsSUFBSSxRQUFRLEVBQUUsQ0FBQztnQkFDOUIsUUFBUSxDQUFDLFFBQVEsR0FBRyxRQUFRLENBQUM7Z0JBQzdCLFFBQVEsQ0FBQyxhQUFhLEdBQUcsSUFBSSxDQUFDO2dCQUU5QixJQUFJLElBQUksR0FBRyxJQUFJLENBQUMsT0FBTyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsWUFBWSxDQUFDLElBQUksRUFBRSxDQUFDO2dCQUNyRCxJQUFJLENBQUMsSUFBSSxDQUFDLFFBQVEsQ0FBQyxDQUFDO2dCQUNwQixJQUFJLENBQUMsT0FBTyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsWUFBWSxFQUFFLElBQUksQ0FBQyxDQUFDO1lBQzlDLENBQUM7UUFDTCxDQUFDO0lBQ0wsQ0FBQztJQUVNLFdBQVcsQ0FBQyxjQUE4QjtRQUU3QyxJQUFJLGFBQWEsR0FBRyxNQUFNLENBQUMsSUFBSSxDQUFDLGNBQWMsQ0FBQyxDQUFDO1FBRWhELEdBQUcsQ0FBQyxDQUFDLE1BQU0sUUFBUSxJQUFJLGFBQWEsQ0FBQyxDQUFDLENBQUM7WUFDbkMsSUFBSSxVQUFVLEdBQUcsRUFBRSxDQUFDO1lBQ3BCLElBQUksU0FBUyxHQUFHLEVBQUUsQ0FBQyxZQUFZLENBQUMsUUFBUSxDQUFDLENBQUMsUUFBUSxFQUFFLENBQUM7WUFDckQsSUFBSSxPQUFPLEdBQUcsOEJBQVksQ0FBQyxTQUFTLENBQUMsQ0FBQztZQUV0QyxHQUFHLENBQUMsQ0FBQyxNQUFNLElBQUksSUFBSSxPQUFPLENBQUMsQ0FBQyxDQUFDO2dCQUN6QixJQUFJLFVBQVUsR0FBRyxDQUFDLElBQUksQ0FBQyxPQUFPLENBQUMsR0FBRyxDQUFDLElBQUksQ0FBQyxZQUFZLENBQUMsSUFBSSxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQztnQkFFaEUsRUFBRSxDQUFDLENBQUMsVUFBVSxJQUFJLGlCQUFpQixDQUFDLFVBQVUsQ0FBQyxhQUFhLENBQUMsZUFBZSxDQUFDLENBQUMsQ0FDOUUsQ0FBQztvQkFDRyxVQUFVLElBQUksSUFBSSxDQUFDLGlCQUFpQjswQkFDdkIsVUFBVSxDQUFDLGFBQWEsQ0FBQyxlQUFlLENBQUM7Z0JBQzFELENBQUM7Z0JBQUMsSUFBSSxDQUFDLENBQUM7b0JBQ0osVUFBVSxJQUFJLElBQUksQ0FBQyxNQUFNLENBQUM7Z0JBQzlCLENBQUM7Z0JBRUQsVUFBVSxJQUFJLElBQUksQ0FBQyxhQUFhLEdBQUcsSUFBSSxDQUFDLEtBQUssQ0FBQztZQUNsRCxDQUFDO1lBRUQsVUFBVSxDQUFDLE9BQU8sQ0FBQyxLQUFLLEVBQUUsTUFBTSxDQUFDLENBQUM7WUFFbEMsRUFBRSxDQUFDLENBQUMsVUFBVSxJQUFJLFNBQVMsQ0FBQyxDQUFDLENBQUM7Z0JBQzFCLEVBQUUsQ0FBQyxhQUFhLENBQUMsUUFBUSxFQUFFLFVBQVUsQ0FBQyxDQUFDO1lBQzNDLENBQUM7UUFDTCxDQUFDO0lBQ0wsQ0FBQztDQUVKO0FBdERELGtDQXNEQztBQUVELDJCQUEyQixlQUF1QjtJQUM5QyxNQUFNLENBQUMsZUFBZSxDQUFDLEtBQUssQ0FBQywyQkFBMkIsQ0FBQyxDQUFDO0FBQzlELENBQUM7QUFHRCxJQUFJLEtBQUssR0FBRyxJQUFJLFdBQVcsRUFBRSxDQUFDO0FBRTlCLEtBQUssQ0FBQyxTQUFTLENBQUMsVUFBVSxDQUFDLENBQUM7QUFDNUIsS0FBSyxDQUFDLFdBQVcsQ0FBQyxVQUFVLENBQUMsQ0FBQyJ9
