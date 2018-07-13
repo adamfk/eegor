@@ -24,6 +24,8 @@ export class CHeaderSync {
         let filesToScan = globby.sync(scanPatterns);
 
         for (const filePath of filesToScan) {
+            console.log(`Scanning file ${filePath}`);
+            
             let code = fs.readFileSync(filePath).toString();
             let funcs = getFunctions(code);
             for (const func of funcs) {
@@ -45,11 +47,22 @@ export class CHeaderSync {
         for (const filePath of filesToUpdate) {
             let outputCode = "";
             let inputCode = fs.readFileSync(filePath).toString();
+            console.log(`Finding functions in ${filePath}`);
             let toFuncs = getFunctions(inputCode);
 
             for (const func of toFuncs) {
-                let sourceInfo = (this.syncMap.get(func.functionName) || [])[0];
-        
+                let sourceList = this.syncMap.get(func.functionName);
+                let sourceInfo : SyncInfo;
+
+                if (sourceList)
+                {
+                    if (sourceList.length > 1) {
+                        console.log(`Multiple sources found for ${func.functionName}`, sourceList);
+                    }
+
+                    sourceInfo = sourceList[0];
+                }
+
                 if (sourceInfo && hasDoxygenComment(sourceInfo.foundFunction.touchingComment))
                 {
                     outputCode += func.beforeLastComment 
@@ -81,3 +94,4 @@ let syncr = new CHeaderSync();
 syncr.scanFiles("test/*.c");
 syncr.updateFiles("test/*.h");
 
+console.log("done!");
